@@ -34,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         <nav>
             <a href="index.php">Home</a>
             <a href="#">About</a>
-            <a href="#">Tasks</a>
+            <a href="#">Tasks </a>
             <a href="seller.php" class="btn-switch">Switch to Seller</a>
         </nav>
     </header>
