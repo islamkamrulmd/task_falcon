@@ -4,12 +4,14 @@ include 'db.php';
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (isset($_POST['bid'])) {
         $task_id = $_POST['task_id'];
-        $seller_id = 1;
+        $seller_id = 1; // Replace with actual logged-in seller ID
         $amount = $_POST['bid_amount'];
 
         if (is_numeric($amount) && $amount > 0) {
             $bid_query = "INSERT INTO bids (task_id, seller_id, amount) VALUES ('$task_id', '$seller_id', '$amount')";
             if ($conn->query($bid_query)) {
+                $message_query = "INSERT INTO messages (sender_id, receiver_id, task_id, message) VALUES ('$seller_id', (SELECT id FROM buyers WHERE id = (SELECT buyer_id FROM task_list WHERE id = '$task_id')), '$task_id', 'Seller has placed a bid of $$amount. Accept or Deny.')";
+                $conn->query($message_query);
                 $message = "Bid placed successfully!";
             } else {
                 $message = "Error placing bid.";
@@ -19,9 +21,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
     }
 
-    if (isset($_POST['report'])) {
+    if (isset($_POST['report_task'])) {
         $task_id = $_POST['task_id'];
-        $report_query = "INSERT INTO reports (task_id) VALUES ('$task_id')";
+        $report_reason = $_POST['report_reason'];
+        $custom_message = $_POST['custom_message'];
+
+        $full_report = $report_reason;
+        if (!empty($custom_message)) {
+            $full_report .= " | Additional message: " . $conn->real_escape_string($custom_message);
+        }
+
+        $report_query = "INSERT INTO reports (task_id, reason) VALUES ('$task_id', '$full_report')";
         if ($conn->query($report_query)) {
             $message = "Task reported successfully!";
         } else {
@@ -38,106 +48,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <title>Task Falcon - Seller Page</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f4f4f4;
+    <script>
+        function toggleReportForm(taskId) {
+            const form = document.getElementById('report-form-' + taskId);
+            form.style.display = form.style.display === 'block' ? 'none' : 'block';
         }
-        .navbar {
-            background-color: #333;
-            color: white;
-            padding: 1rem 2rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            position: sticky;
-            top: 0;
-            width: 100%;
-            z-index: 100;
-        }
-        .navbar .logo h1 {
-            margin: 0;
-            font-size: 1.5rem;
-        }
-        .navbar .navbar-links {
-            display: flex;
-            align-items: center;
-        }
-        .navbar nav a {
-            color: white;
-            text-decoration: none;
-            margin: 0 1rem;
-            font-size: 1rem;
-            position: relative;
-            transition: color 0.3s;
-        }
-        .navbar nav a:hover {
-            color: #f39c12;
-        }
-        .hero-section {
-            padding: 3rem 2rem;
-            text-align: center;
-            background-color: #222;
-            color: white;
-        }
-        .hero-button {
-            background-color: #f39c12;
-            color: white;
-            padding: 0.5rem 1.5rem;
-            text-decoration: none;
-            border-radius: 30px;
-            font-weight: bold;
-            transition: background-color 0.3s;
-        }
-        .hero-button:hover {
-            background-color: #e67e22;
-        }
-        .task-list {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 1rem;
-            padding: 2rem;
-        }
-        .task-card {
-            background-color: white;
-            padding: 1rem;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-        }
-        .task-card p {
-            margin: 0.5rem 0;
-        }
-        .task-card form {
-            margin-top: 1rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .task-card input, .task-card button {
-            padding: 0.5rem;
-            border-radius: 4px;
-        }
-        .task-card .btn-bid {
-            background-color: #3498db;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-        .task-card .btn-bid:hover {
-            background-color: #2980b9;
-        }
-        .task-card .btn-report {
-            background-color: red;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-        .task-card .btn-report:hover {
-            background-color: #c0392b;
-        }
-    </style>
+    </script>
 </head>
 <body>
 <div class="container">
@@ -148,9 +64,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         <div class="navbar-links">
             <nav>
                 <a href="index.php">Home</a>
+                <a href="task.php">Tasks</a>
+
                 <a href="about.php">About</a>
-                <a href="#">Tasks</a>
                 <a href="buyer.php" class="btn-switch">Switch to Buyer</a>
+                <a href="notifications.php" class="btn-notification">
+    <i class="fas fa-bell"></i>
+</a>
             </nav>
         </div>
     </header>
@@ -181,9 +101,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         <input type="number" id="bid_amount" name="bid_amount" required placeholder="Enter your bid amount">
                         <button type="submit" name="bid" class="btn btn-bid">Place Bid</button>
                     </form>
-                    <form method="POST" class="task-form report-form">
+                    <button class="btn btn-report" onclick="toggleReportForm(<?= $row['id'] ?>)">Report</button>
+                    <form method="POST" id="report-form-<?= $row['id'] ?>" class="task-form report-form" style="display: none;">
                         <input type="hidden" name="task_id" value="<?= $row['id'] ?>">
-                        <button type="submit" name="report" class="btn btn-report" onclick="return confirm('Are you sure you want to report this task?');">Report</button>
+                        <label>Reason for Reporting:</label><br>
+                        <input type="radio" name="report_reason" value="Spam" required> Spam<br>
+                        <input type="radio" name="report_reason" value="Offensive Content" required> Offensive Content<br>
+                        <input type="radio" name="report_reason" value="Fraudulent Task" required> Fraudulent Task<br>
+                        <input type="radio" name="report_reason" value="Other" required> Other<br>
+                        <label>Custom Message (Optional):</label>
+                        <textarea name="custom_message" placeholder="Provide additional details"></textarea>
+                        <button type="submit" name="report_task" class="btn btn-report-submit">Submit Report</button>
                     </form>
                 </div>
             <?php endwhile; ?>
